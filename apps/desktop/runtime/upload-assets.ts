@@ -131,7 +131,8 @@ export async function uploadAssets(
   const started = Date.now();
   const requests = parseUploadAssets(args);
   if (typeof requests === "string") {
-    return { ok: false, data: undefined, text: `${UPLOAD_ASSETS_OPERATION} was not run: ${requests}`, httpStatus: 200, durationMs: Date.now() - started };
+    const message = `${UPLOAD_ASSETS_OPERATION} was not run: ${requests}`;
+    return { ok: false, data: undefined, text: message, message, httpStatus: 200, durationMs: Date.now() - started };
   }
 
   // Each upload is started only while a whole one still fits in this call's budget.
@@ -149,6 +150,10 @@ export async function uploadAssets(
   }
 
   const done = results.filter((asset) => asset.status === "complete" || asset.status === "processing").length;
+  const incomplete = results.find((asset) => asset.status === "failed") ??
+    results.find((asset) => asset.status === "not uploaded");
+  const message = incomplete === undefined ? undefined
+    : `Uploaded ${done} of ${results.length} files. ${incomplete.displayName}: ${incomplete.error ?? "not uploaded before the time limit."}`;
   const decals = results.some((asset) => asset.assetType === "Decal" && asset.imageId);
   const lines = [
     `Uploaded ${done} of ${results.length} files.${done < results.length ? " The uploaded ones are on Roblox already: retry only the others." : ""}`,
@@ -157,6 +162,7 @@ export async function uploadAssets(
   ];
   return {
     ok: done === results.length,
+    ...(message === undefined ? {} : { message }),
     data: { uploads: results },
     text: lines.join("\n"),
     httpStatus: 200,

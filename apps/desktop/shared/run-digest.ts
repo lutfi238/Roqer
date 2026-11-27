@@ -164,7 +164,19 @@ function failedCalls(record: RunRecord): string[] {
     const line = `${failure.tool}: ${failure.message}`;
     counts.set(line, (counts.get(line) ?? 0) + 1);
   }
-  return [...counts].map(([line, count]) => (count > 1 ? `${line} (×${count})` : line));
+  return [...counts].map(([line, count]) => {
+    const suffix = count > 1 ? ` (×${count})` : "";
+    const limit = MAX_DIGEST_LINE_CHARS - suffix.length;
+    const logStart = line.indexOf("\n");
+    // Keep the tool and error header as well as the end of a Blender log,
+    // where Python puts the exception and the innermost traceback frame.
+    if (line.startsWith("run_blender_script: ") && logStart >= 0 && line.length > limit) {
+      const head = line.slice(0, Math.min(logStart, Math.floor(limit / 2)));
+      const separator = "\n…\n";
+      return head + separator + line.slice(-(limit - head.length - separator.length)) + suffix;
+    }
+    return line + suffix;
+  });
 }
 
 /** The newest notes that fit the note budget, with a count of any left out. */

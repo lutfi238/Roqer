@@ -139,6 +139,27 @@ test("a run that did not complete says why it stopped and which calls failed", (
   })), false);
 });
 
+test("a long Blender failure keeps the Python exception in the follow-up digest", () => {
+  const failure = {
+    code: "script_failed",
+    tool: "run_blender_script",
+    message: [
+      "The script failed in Blender (exit 1).",
+      "Traceback (most recent call last):",
+      '  File "roqer_runner.py", line 27, in <module>'.repeat(20),
+      '  File "model.py", line 8, in <module>',
+      "ValueError: invalid mesh",
+    ].join("\n"),
+    retryable: false,
+  };
+  const digest = digestRun({ ...RECORD, outcome: "failed", failures: [failure, failure] });
+  assert.equal(isRunDigest(digest), true);
+  const line = digest.failedCalls?.[0] ?? "";
+  assert.match(line, /^run_blender_script: The script failed in Blender \(exit 1\)\./);
+  assert.match(line, /model\.py", line 8, in <module>\nValueError: invalid mesh \(×2\)$/);
+  assert.ok(line.length <= MAX_DIGEST_LINE_CHARS);
+});
+
 test("the user's notes are carried, newest first to survive the bound", () => {
   const long = (label: string) => `${label} ${"x".repeat(3_000)}`;
   const notes = ["Don't touch the snow system.", long("a"), long("b"), long("c")];

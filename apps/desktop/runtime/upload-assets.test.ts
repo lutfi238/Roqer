@@ -65,6 +65,7 @@ test("a failed file does not hide the ones already on Roblox, and an unresolved 
   const outcome = await uploadAssets({ uploads: [upload("Flash"), upload("Ring"), upload("Spark")] }, {}, studio);
 
   assert.equal(outcome.ok, false);
+  assert.equal(outcome.message, "Uploaded 2 of 3 files. Ring: File not found: C:/jobs/Ring.png");
   assert.match(outcome.text, /^Uploaded 2 of 3 files\. The uploaded ones are on Roblox already: retry only the others\./);
   assert.match(outcome.text, /- Flash \(C:\/jobs\/Flash\.png\): complete, asset 101, moderation Approved; still processing: check it with upload_asset \{action: 'status', operationId: 'op-101'\}/);
   assert.match(outcome.text, /- Ring \(C:\/jobs\/Ring\.png\): failed: File not found: C:\/jobs\/Ring\.png/);
@@ -87,6 +88,7 @@ test("a bad list uploads nothing, and a cancelled run uploads nothing further", 
   const refused = await uploadAssets({ uploads: [upload("a", "Png")] }, {}, studio);
   assert.equal(refused.ok, false);
   assert.match(refused.text, /^upload_assets was not run: uploads\[0\]\.assetType/);
+  assert.equal(refused.message, refused.text);
 
   const controller = new AbortController();
   const cancelling: StudioCaller = async (tool, args, options) => {
