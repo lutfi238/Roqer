@@ -13,6 +13,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+    branches: ["fix/antigravity-error-diagnostics"]
   workflow_dispatch:
 
 permissions:
