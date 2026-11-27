@@ -26,7 +26,7 @@ import {
   hasDesktopRuntime, loadWorkspace, pickAsset, getStorageStatus, recoverWorkspace, exportWorkspace, releaseAttachments,
   answerRunQuestion, attachImage, attachVideo, ATTACHABLE_IMAGE_TYPES, ATTACHABLE_VIDEO_TYPES, selectClip, steerRun, compactChat,
   getBridgeState, restartBridge, subscribeToBridge, type McpServerState,
-  getUpdateState, installUpdate, subscribeToUpdates, type AppUpdateState,
+  getStartupReleaseVersion, getUpdateState, installUpdate, subscribeToUpdates, type AppUpdateState,
   flushWorkspace, getProviderModels, getProviderStatus, getStudioSelection, openScriptInStudio, respondToRun, saveWorkspace, startRun,
   subscribeToRuns,
   type ProviderModelCatalog, type ProviderStatus,
@@ -47,6 +47,8 @@ import { Markdown, StreamingMarkdown } from "./markdown-view";
 import { usePresence } from "./presence";
 import { useSettledFlag } from "./settled-flag";
 import { SettingsPage } from "./settings-page";
+import { releaseNotesFor } from "../shared/whats-new";
+import { WhatsNewDialog } from "./whats-new";
 import { DiagnosticsActions } from "./diagnostics-actions";
 import { sendBlockedNotice } from "./send-blocked";
 import type { FileExpansion } from "./results-card";
@@ -253,6 +255,18 @@ function App() {
    */
   const [studioRestartDismissed, setStudioRestartDismissed] = useState(false);
   const [updateState, setUpdateState] = useState<AppUpdateState>({ kind: "idle" });
+  const [startupRelease, setStartupRelease] = useState<string | null>(null);
+  const startupReleaseRequest = useRef<Promise<string | null> | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    // Reuse the bridge request when StrictMode rechecks the effect.
+    const request = startupReleaseRequest.current ??= getStartupReleaseVersion();
+    void request.then((version) => {
+      if (!cancelled) setStartupRelease(version);
+    }, () => undefined);
+    return () => { cancelled = true; };
+  }, []);
+  const releaseNotes = releaseNotesFor(startupRelease);
   const [storageBusy, setStorageBusy] = useState(false);
   const [expandedProjects, setExpandedProjects] = useState(() => new Set<string>());
   const [composer, setComposer] = useState("");
@@ -2185,6 +2199,7 @@ function App() {
 
       {settingsPage.present && <SettingsPage leaving={settingsPage.leaving} preferences={workspace.preferences} studioStatus={studioStatus} updateState={updateState} onPreferences={updatePreferences} onStudioRefresh={() => void refreshStudioStatus()} onProviderChanged={() => { void refreshProviderStatus(); void refreshProviderModels(); }} onExport={() => void exportChats(storageRecovery.required ? undefined : workspace)} notice={settingsNotice ?? undefined} onClose={() => { setShowSettings(false); setSettingsNotice(null); }} />}
       {renderDialog()}
+      {hydrated && releaseNotes !== undefined && <WhatsNewDialog notes={releaseNotes} onDismiss={() => setStartupRelease(null)} />}
       <DictationSetup dictation={dictation} />
       {!hydrated && <div className="loading-overlay"><div><span /><strong>Opening your workspace…</strong></div></div>}
     </div>

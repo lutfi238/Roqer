@@ -2,19 +2,23 @@
 
 Roqer can ask an image model for the flat pictures an effect or an interface
 needs: particle sprites and light textures, UI icons and item art, decals and
-signs, and tileable surface textures. You bring the model: OpenAI's image API
-with your own key, or any server that speaks the same `/images/generations`
-API, such as a local one. The agent writes the prompt, Roqer makes the call,
+signs, and tileable surface textures. Roqer can use the ChatGPT account
+you connected through Codex, OpenAI or OpenRouter with an API key, or an
+OpenAI-compatible image server. The agent writes the prompt, Roqer makes the call,
 measures what comes back, shows it to the agent and to you, and the agent
 then previews it in Studio and uploads it when it is right.
 
-The integration is off until you turn it on. Flipbooks (anything that plays
-across frames) and effect meshes still come from
+Roqer defaults to ChatGPT via Codex when the account is connected and no
+image settings have been saved. Flipbooks and effect meshes still come from
 [Blender](blender.md); the image tool is for a single drawn or lit shape.
 
 ## What you need
 
 - **An image model.** One of:
+  - a ChatGPT account connected in **Settings → Models** and a Codex
+    installation that supports built-in image generation. Codex chooses the
+    available image model for that account. Quality, size and background
+    are passed as guidance. No image API key is needed for this option;
   - an OpenAI API key that may use the Images API (the default model is
     `gpt-image-1`);
   - an OpenRouter key, with any model in OpenRouter's image list (the
@@ -32,10 +36,10 @@ across frames) and effect meshes still come from
 ## Turn it on
 
 1. Open **Settings → Images** in Roqer.
-2. Click **Change**, choose **OpenAI**, **OpenRouter** or **OpenAI-compatible
-   server**, name the model, paste the key, and pick a default quality.
-   **Save**.
-3. **Test** asks the server about the model without making a picture. For
+2. Click **Change** to pick a source and quality. For API sources, enter
+   the model and any required key. For **ChatGPT via Codex**, connect the
+   account in **Settings → Models**. **Save**.
+3. **Test** checks the connection without making a picture. For
    OpenRouter it also says what the model takes: a transparent background, a
    quality, how many pictures a call, reference pictures.
 4. Turn on **Generate images**.

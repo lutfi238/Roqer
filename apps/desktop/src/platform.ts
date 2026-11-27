@@ -577,6 +577,11 @@ export async function getAppVersion(): Promise<string | null> {
   return window.workbenchDesktop?.app.version() ?? null;
 }
 
+/** The release to show on this launch, if the desktop just upgraded. */
+export async function getStartupReleaseVersion(): Promise<string | null> {
+  return window.workbenchDesktop?.app.whatsNew() ?? null;
+}
+
 /** The window's access to dictation, or undefined outside the desktop app. */
 export function dictationBridge(): NonNullable<Window["workbenchDesktop"]>["dictation"] | undefined {
   return window.workbenchDesktop?.dictation;

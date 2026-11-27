@@ -36,6 +36,7 @@ export type CodexAppServerOptions = {
    * the user's own `~/.codex`. See `codexChildEnvironment`.
    */
   codexHome?: string;
+  imageOnly?: boolean;
   spawnProcess?: () => ChildProcessWithoutNullStreams;
 };
 
@@ -80,8 +81,13 @@ export const CODEX_LOCKDOWN_ARGS: readonly string[] = [
   ...CODEX_DISABLED_SETTINGS.flatMap((setting) => ["-c", setting]),
 ];
 
-export function codexAppServerArgs(): string[] {
-  return ["app-server", ...CODEX_LOCKDOWN_ARGS, "--stdio"];
+export function codexAppServerArgs(imageOnly = false): string[] {
+  const lockdown = imageOnly
+    ? CODEX_DISABLED_FEATURES.filter((feature) => feature !== "image_generation")
+      .flatMap((feature) => ["-c", `features.${feature}=false`])
+      .concat(["-c", "features.image_generation=true"], ...CODEX_DISABLED_SETTINGS.map((setting) => ["-c", setting]))
+    : CODEX_LOCKDOWN_ARGS;
+  return ["app-server", ...lockdown, "--stdio"];
 }
 
 /**
@@ -130,6 +136,7 @@ export class CodexAppServerClient {
   private readonly executable?: string;
   private readonly cwd?: string;
   private readonly codexHome?: string;
+  private readonly imageOnly: boolean;
   private readonly spawnProcess?: () => ChildProcessWithoutNullStreams;
 
   private child: ChildProcessWithoutNullStreams | null = null;
@@ -147,6 +154,7 @@ export class CodexAppServerClient {
     this.executable = options.executable;
     this.cwd = options.cwd;
     this.codexHome = options.codexHome;
+    this.imageOnly = options.imageOnly === true;
     this.spawnProcess = options.spawnProcess;
   }
 
@@ -363,7 +371,7 @@ export class CodexAppServerClient {
     // Codex refuses a CODEX_HOME that does not exist yet.
     if (this.codexHome !== undefined && !this.spawnProcess) mkdirSync(this.codexHome, { recursive: true });
     const executable = this.spawnProcess ? undefined : await resolveCodexExecutable({ executable: this.executable });
-    const child = this.spawnProcess?.() ?? spawn(executable!, codexAppServerArgs(), {
+    const child = this.spawnProcess?.() ?? spawn(executable!, codexAppServerArgs(this.imageOnly), {
       cwd: this.cwd,
       env: childEnvironment,
       shell: false,

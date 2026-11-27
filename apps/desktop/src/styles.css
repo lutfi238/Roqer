@@ -922,6 +922,14 @@ div.run-note-text > p, div.run-note-text > .user-quote { white-space: pre-wrap; 
 .modal-header { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 17px; border-bottom: 1px solid var(--border); }
 .modal-header > div { display: flex; flex-direction: column; }
 .modal-header h2 { margin: 0; color: var(--ink); font-size: 20px; font-weight: var(--weight-semibold); letter-spacing: -.3px; }
+.whats-new-dialog { width: min(500px, calc(100% - 40px)); max-height: calc(100% - 40px); overflow: auto; }
+.whats-new-dialog::backdrop { background: var(--scrim); backdrop-filter: blur(5px); }
+.whats-new-version { margin-top: 5px; color: var(--muted); font-size: var(--type-meta); }
+.whats-new-changes { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+.whats-new-dialog .whats-new-changes { margin-top: 18px; }
+.whats-new-changes li { display: grid; gap: 5px; }
+.whats-new-changes strong { font-size: var(--type-body); font-weight: var(--weight-semibold); }
+.whats-new-changes p { margin: 0; color: var(--muted); font-size: var(--type-body); line-height: 1.55; }
 /* Settings is a page of its own over the chat: a sidebar of subjects and one
    column of grouped rows, instead of a dialog with dialogs stacked on it. */
 .settings-page { position: fixed; inset: 0; z-index: 90; display: flex; min-width: 720px; color: var(--ink); background: var(--canvas); }

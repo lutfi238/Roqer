@@ -1,4 +1,4 @@
-import { Box, ChevronLeft, ChevronRight, Cpu, Gamepad2, ImageIcon, Moon, Plug, Plus, SlidersHorizontal, Sun, X, type LucideIcon } from "lucide-react";
+import { Box, ChevronLeft, ChevronRight, Cpu, Gamepad2, ImageIcon, Moon, Plug, Plus, SlidersHorizontal, Sparkles, Sun, X, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { appVersionDetail, type AppUpdateState } from "../shared/app-update";
@@ -6,6 +6,7 @@ import type { CustomConnectionView } from "../shared/custom-providers";
 import { ENABLED_PROVIDER_IDS, providerLabel, SIGN_OUT_CANCELLED, type ProviderId, type ProviderStatus } from "../shared/provider";
 import { NO_LIMITS, type ProviderLimits } from "../shared/provider-limits";
 import type { StudioStatus } from "../shared/studio-status";
+import { releaseNotesFor } from "../shared/whats-new";
 import type { WorkspaceState } from "./model";
 import { accountDetail } from "./account-detail";
 import { BlenderSettings } from "./blender-settings";
@@ -23,6 +24,7 @@ import { planUsageView, USAGE_SCOPES } from "./plan-usage";
 import { PlanUsageList } from "./plan-usage-list";
 import { SettingsGroup, SettingsRow, SettingsSwitch } from "./settings-parts";
 import { DictationSettings } from "./dictation-settings";
+import { WhatsNewChanges } from "./whats-new";
 
 /**
  * Settings, as a page of the app rather than a dialog over it.
@@ -37,7 +39,7 @@ import { DictationSettings } from "./dictation-settings";
  * beside the model. This page only says what is available to choose from.
  */
 
-export type SettingsSectionId = "models" | "roblox" | "blender" | "images" | "mcp" | "app";
+export type SettingsSectionId = "models" | "roblox" | "blender" | "images" | "mcp" | "app" | "whats-new";
 
 const SECTIONS: ReadonlyArray<{ id: SettingsSectionId; label: string; icon: LucideIcon }> = [
   { id: "models", label: "Models", icon: Cpu },
@@ -46,6 +48,7 @@ const SECTIONS: ReadonlyArray<{ id: SettingsSectionId; label: string; icon: Luci
   { id: "images", label: "Images", icon: ImageIcon },
   { id: "mcp", label: "MCP servers", icon: Plug },
   { id: "app", label: "App", icon: SlidersHorizontal },
+  { id: "whats-new", label: "What’s New", icon: Sparkles },
 ];
 
 /** A subscription account; the Custom provider is the endpoints list instead. */
@@ -100,6 +103,7 @@ export function SettingsPage({ leaving = false, preferences, studioStatus, updat
   const mainRef = useRef<HTMLElement>(null);
   /** Asked of the running app rather than built in, so it is the version actually running. */
   const [appVersion, setAppVersion] = useState<string | null>(null);
+  const releaseNotes = releaseNotesFor(appVersion);
 
   useEffect(() => {
     let cancelled = false;
@@ -233,6 +237,13 @@ export function SettingsPage({ leaving = false, preferences, studioStatus, updat
           guarded={guarded}
           onDirtyChange={setPageDirty}
         />}
+
+        {section === "whats-new" && <>
+          <PageHead title="What’s New" lede={appVersion === null ? undefined : `Roqer ${appVersion}`} />
+          {releaseNotes === undefined
+            ? <p className="settings-notice">No release notes are included for this build.</p>
+            : <WhatsNewChanges notes={releaseNotes} />}
+        </>}
 
         {section === "app" && <>
           <PageHead title="App" />

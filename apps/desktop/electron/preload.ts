@@ -507,6 +507,10 @@ contextBridge.exposeInMainWorld("workbenchDesktop", {
       const value: unknown = await ipcRenderer.invoke("app:version");
       return isAppVersion(value) ? value : null;
     },
+    whatsNew: async (): Promise<string | null> => {
+      const value: unknown = await ipcRenderer.invoke("app:whats-new");
+      return isAppVersion(value) ? value : null;
+    },
     /**
      * Put a report of the Studio connection on the clipboard. The main process
      * writes it; the window never receives the log it is made from.

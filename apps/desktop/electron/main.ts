@@ -38,6 +38,7 @@ import { BlenderSettings } from "../runtime/blender-settings";
 import { BlenderWorker, scriptEnvironment } from "../runtime/blender-worker";
 import { ImageSettings } from "../runtime/image-settings";
 import { ImageWorker } from "../runtime/image-worker";
+import { CodexImageSource } from "../runtime/image-sources/codex-images";
 import { createImageSource, testImageSource } from "../runtime/image-sources";
 import {
   IMAGE_OPERATION, imageSourceNeedsKey, MAX_IMAGES_PER_RUN, parseImageSettingsSave, type ImageSettingsResult, type ImageTestResult,
@@ -121,6 +122,8 @@ import {
 } from "../runtime/run-engine";
 import { PendingRuns } from "../runtime/pending-runs";
 import { WorkspaceStore } from "../runtime/workspace-store";
+import { recordLaunchedVersion } from "../runtime/release-history";
+import { releaseNotesFor } from "../shared/whats-new";
 import { adoptPreviousUserData, PREVIOUS_USER_DATA_SEGMENTS } from "../runtime/user-data-location";
 import { RunJournal } from "../runtime/run-journal";
 import { RunAttention, type AttentionSurface } from "../runtime/run-attention";
@@ -862,7 +865,11 @@ let imageSettingsStore: ImageSettings | null = null;
 
 /** Whether the image tool is on, which server it calls, with which model and key; the key encrypted by the OS. */
 function imageSettings(): ImageSettings {
-  imageSettingsStore ??= new ImageSettings({ file: path.join(app.getPath("userData"), "image-generation.json"), protector: electronSecretProtector });
+  imageSettingsStore ??= new ImageSettings({
+    file: path.join(app.getPath("userData"), "image-generation.json"),
+    protector: electronSecretProtector,
+    codexConnected: async () => (await chatGptProvider().getChatGptStatus()).kind === "signed-in",
+  });
   return imageSettingsStore;
 }
 
@@ -882,7 +889,7 @@ async function runImageJob(args: Record<string, unknown>, options: McpCallOption
     ({ ok: false, data: undefined, text: message, httpStatus: 200, errorCode, message, durationMs: 0 });
   const ready = await imageSettings().ready().catch(() => undefined);
   if (ready === undefined) {
-    return refused("Image generation is turned off in Roqer's Settings, or has no key, so no picture was made. Ask the user to set it up under Settings → Images, or draw the texture in Blender instead.", "image_off");
+    return refused("Image generation is turned off or its source needs a connection, so no picture was made. Ask the user to set it up under Settings → Images, or draw the texture in Blender instead.", "image_off");
   }
   // One run may make only so many pictures, so a Full auto run that keeps
   // retrying a texture cannot spend without end.
@@ -891,8 +898,12 @@ async function runImageJob(args: Record<string, unknown>, options: McpCallOption
     return refused(`This run has made ${budget.made} of the ${MAX_IMAGES_PER_RUN} images one run may make, so this call was not sent. Use what was made, draw the texture in Blender, or ask the user to start a new run.`, "image_budget_spent");
   }
   budget.made += count;
+  const codexHome = path.join(app.getPath("userData"), "codex");
+  const source = ready.source === "codex"
+    ? new CodexImageSource(codexHome, () => new CodexAppServerClient({ cwd: codexHome, codexHome, imageOnly: true }))
+    : createImageSource(ready);
   const worker = new ImageWorker({
-    source: createImageSource(ready),
+    source,
     jobsRoot: imageJobsRoot(),
     scope: createHash("sha256").update(chatId).digest("hex").slice(0, 32),
     defaultQuality: ready.quality,
@@ -940,6 +951,12 @@ async function testImageSettings(event: IpcMainInvokeEvent): Promise<ImageTestRe
   if (!isTrusted(event.sender)) return { ok: false, message: "This window may not test the image settings." };
   try {
     const resolved = await imageSettings().resolved();
+    if (resolved.source === "codex") {
+      const status = await chatGptProvider().getChatGptStatus();
+      return status.kind === "signed-in"
+        ? { ok: true, message: "ChatGPT is connected. The installed Codex and your plan determine image model availability." }
+        : { ok: false, message: status.message };
+    }
     if (imageSourceNeedsKey(resolved.source) && resolved.apiKey === null) return { ok: false, message: "Save an API key first." };
     return await testImageSource(resolved, AbortSignal.timeout(20_000));
   } catch (error) {
@@ -3155,6 +3172,7 @@ function runSmokeTest(window: BrowserWindow): void {
         // Settings shows the running version, asked of this process.
         const version = await bridge.app?.version?.();
         if (typeof version !== "string" || version === "") return { ok: false, reason: "app-version" };
+        if ((await bridge.app?.whatsNew?.()) !== null) return { ok: false, reason: "fresh-profile-release-notes" };
 
         const events = [];
         const finished = new Promise((resolve) => {
@@ -3349,6 +3367,14 @@ app.whenReady().then(async () => {
     if (!isTrusted(event.sender)) throw new Error("This window may not read the app version.");
     return app.getVersion();
   });
+  // A second window opened by the same process should not replay this notice.
+  let startupReleaseVersion: string | null = null;
+  ipcMain.handle("app:whats-new", (event) => {
+    if (!isTrusted(event.sender)) throw new Error("This window may not read release information.");
+    const version = startupReleaseVersion;
+    startupReleaseVersion = null;
+    return version;
+  });
   ipcMain.handle("app:copy-diagnostics", copyDiagnostics);
   ipcMain.handle("app:show-bridge-log", showBridgeLog);
 
@@ -3371,6 +3397,10 @@ app.whenReady().then(async () => {
   void clipStore().prune().catch(() => undefined);
   await fs.promises.rm(clipSourcesDirectory(), { recursive: true, force: true }).catch(() => undefined);
 
+  const version = app.getVersion();
+  // Test for an earlier profile before the workspace store can create one.
+  const upgraded = app.isPackaged && await recordLaunchedVersion(app.getPath("userData"), version).catch(() => false);
+  if (upgraded && releaseNotesFor(version) !== undefined) startupReleaseVersion = version;
   windowBackground = await resolveWindowBackground();
   createWindow();
 

@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import {
-  DEFAULT_IMAGE_BASE_URL, DEFAULT_IMAGE_MODEL, isImageQuality, isImageSourceKind, MAX_IMAGE_KEY_CHARACTERS, MAX_IMAGE_MODEL_CHARS,
+  CODEX_IMAGE_MODEL, DEFAULT_IMAGE_BASE_URL, DEFAULT_IMAGE_MODEL, isImageQuality, isImageSourceKind, MAX_IMAGE_KEY_CHARACTERS, MAX_IMAGE_MODEL_CHARS,
   type ImageQuality, type ImageSettingsSave, type ImageSettingsView, type ImageSourceKind, defaultImageBaseUrl, imageSourceLabel, imageSourceNeedsKey,
 } from "../shared/image-generation";
 import type { SecretProtector } from "./secret-protector";
@@ -27,6 +27,7 @@ export type ImageSettingsOptions = Readonly<{
   file: string;
   protector: SecretProtector;
   now?: () => Date;
+  codexConnected?: () => Promise<boolean>;
 }>;
 
 type StoredFile = Readonly<{
@@ -88,7 +89,17 @@ function parseStoredFile(value: unknown): StoredFile | undefined {
   };
 }
 
-function view(file: StoredFile, damagedNotice?: string): ImageSettingsView {
+function view(file: StoredFile, connected = false): ImageSettingsView {
+  if (file.source === "codex") {
+    return {
+      enabled: connected && file.enabled, source: "codex", baseUrl: file.baseUrl,
+      model: CODEX_IMAGE_MODEL, hasKey: false, quality: file.quality,
+      state: !connected ? "missing" : file.enabled ? "ready" : "off",
+      message: !connected ? "Connect ChatGPT in Settings → Models to use Codex for images."
+        : file.enabled ? "On: uses the image model available to your connected ChatGPT account."
+          : "Off. Turn it on to generate images through your ChatGPT account.",
+    };
+  }
   const hasKey = file.encryptedApiKey !== undefined;
   const needsKey = imageSourceNeedsKey(file.source) && !hasKey;
   const state = needsKey ? "missing" : file.enabled ? "ready" : "off";
@@ -100,7 +111,6 @@ function view(file: StoredFile, damagedNotice?: string): ImageSettingsView {
       : `Off. When on, the agent can ask ${where} for images with ${file.model}.`;
   return {
     enabled: file.enabled && !needsKey, source: file.source, baseUrl: file.baseUrl, model: file.model, hasKey, quality: file.quality, state, message,
-    ...(damagedNotice === undefined ? {} : { damagedNotice }),
   };
 }
 
@@ -108,6 +118,7 @@ export class ImageSettings {
   private readonly file: string;
   private readonly protector: SecretProtector;
   private readonly now: () => Date;
+  private readonly codexConnected?: () => Promise<boolean>;
   private queue: Promise<unknown> = Promise.resolve();
   private cached: StoredFile | undefined;
   private preservedPath: string | undefined;
@@ -117,6 +128,7 @@ export class ImageSettings {
     this.file = options.file;
     this.protector = options.protector;
     this.now = options.now ?? (() => new Date());
+    this.codexConnected = options.codexConnected;
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
@@ -148,6 +160,18 @@ export class ImageSettings {
     if (parsed === undefined) return this.preserveDamaged();
     this.cached = parsed;
     return parsed;
+  }
+
+  private async effectiveFile(): Promise<{ file: StoredFile; connected: boolean }> {
+    const saved = await this.read();
+    if (saved.source !== "codex" && (saved !== EMPTY || this.preservedPath !== undefined)) {
+      return { file: saved, connected: false };
+    }
+    const connected = await this.codexConnected?.().catch(() => false) ?? false;
+    const file = saved === EMPTY && connected
+      ? { ...EMPTY, source: "codex" as const, enabled: true, model: CODEX_IMAGE_MODEL }
+      : saved;
+    return { file, connected };
   }
 
   private async preserveDamaged(): Promise<StoredFile> {
@@ -208,12 +232,15 @@ export class ImageSettings {
   }
 
   get(): Promise<ImageSettingsView> {
-    return this.enqueue(async () => view(await this.read()));
+    return this.enqueue(async () => {
+      const { file, connected } = await this.effectiveFile();
+      return view(file, connected);
+    });
   }
 
   save(save: ImageSettingsSave): Promise<ImageSettingsView> {
     return this.enqueue(async () => {
-      const current = await this.read();
+      const { file: current, connected } = await this.effectiveFile();
       const source = save.source ?? current.source;
       // A change of source without an address takes the new source's own
       // address; a compatible server keeps whatever was there to edit.
@@ -222,9 +249,9 @@ export class ImageSettings {
         : current.baseUrl);
       const baseUrl = normalizeImageBaseUrl(rawBaseUrl);
       if (baseUrl === undefined) throw new ImageSettingsError("The server address must be an http or https address, such as https://api.openai.com/v1.");
-      const model = (save.model ?? current.model).trim();
+      const model = source === "codex" ? CODEX_IMAGE_MODEL : (save.model ?? current.model).trim();
       if (model === "" || model.length > MAX_IMAGE_MODEL_CHARS) throw new ImageSettingsError("Name the image model, such as gpt-image-1.");
-      const encryptedApiKey = save.apiKey === undefined
+      const encryptedApiKey = source === "codex" || save.apiKey === undefined
         ? current.encryptedApiKey
         : save.apiKey === null ? undefined : this.encrypt(save.apiKey);
       const next: StoredFile = {
@@ -237,32 +264,34 @@ export class ImageSettings {
         ...(encryptedApiKey === undefined ? {} : { encryptedApiKey }),
       };
       await this.write(next);
-      return view(next);
+      return view(next, source === "codex" && (current.source === "codex" ? connected : await this.codexConnected?.().catch(() => false) ?? false));
     });
+  }
+
+  private resolve(file: StoredFile): ImageSourceSettings {
+    let apiKey: string | null = null;
+    if (file.source !== "codex" && file.encryptedApiKey !== undefined) {
+      const ciphertext = decodeCiphertext(file.encryptedApiKey);
+      if (ciphertext === undefined) throw new ImageSettingsError("The saved API key is damaged; enter it again.");
+      try {
+        apiKey = this.protector.decryptString(ciphertext);
+      } catch {
+        throw new ImageSettingsError("The saved API key could not be decrypted; enter it again.");
+      }
+    }
+    return { source: file.source, baseUrl: file.baseUrl, model: file.model, quality: file.quality, apiKey };
   }
 
   /** The settings with the key decrypted. `apiKey` is null when none is saved. */
   resolved(): Promise<ImageSourceSettings> {
-    return this.enqueue(async () => {
-      const current = await this.read();
-      let apiKey: string | null = null;
-      if (current.encryptedApiKey !== undefined) {
-        const ciphertext = decodeCiphertext(current.encryptedApiKey);
-        if (ciphertext === undefined) throw new ImageSettingsError("The saved API key is damaged; enter it again.");
-        try {
-          apiKey = this.protector.decryptString(ciphertext);
-        } catch {
-          throw new ImageSettingsError("The saved API key could not be decrypted; enter it again.");
-        }
-      }
-      return { source: current.source, baseUrl: current.baseUrl, model: current.model, quality: current.quality, apiKey };
-    });
+    return this.enqueue(async () => this.resolve((await this.effectiveFile()).file));
   }
 
   /** The source to call, when the tool is on and can be called; otherwise undefined. */
-  async ready(): Promise<ImageSourceSettings | undefined> {
-    const current = await this.get();
-    if (current.state !== "ready") return undefined;
-    return this.resolved();
+  ready(): Promise<ImageSourceSettings | undefined> {
+    return this.enqueue(async () => {
+      const { file, connected } = await this.effectiveFile();
+      return view(file, connected).state === "ready" ? this.resolve(file) : undefined;
+    });
   }
 }

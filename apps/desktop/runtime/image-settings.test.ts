@@ -91,3 +91,26 @@ test("OpenRouter takes its own address when chosen, needs a key, and a compatibl
   assert.equal(openai.baseUrl, "https://api.openai.com/v1");
   assert.equal(openai.state, "missing");
 }));
+
+test("a connected Codex account supplies the default until the user saves a preference", async () => withStore(async (_, file) => {
+  let connected = false;
+  const store = new ImageSettings({ file, protector, codexConnected: async () => connected });
+  assert.equal((await store.get()).source, "openai");
+  connected = true;
+  assert.equal((await store.get()).source, "codex");
+  assert.equal((await store.ready())?.source, "codex");
+  assert.equal((await store.ready())?.apiKey, null);
+  assert.equal((await store.save({ enabled: false })).state, "off");
+  assert.equal(await store.ready(), undefined);
+  connected = false;
+  assert.equal((await store.get()).state, "missing");
+  connected = true;
+  assert.equal((await store.get()).state, "off");
+  await store.save({ source: "openrouter", model: "openai/gpt-image-1", apiKey: "router-key", enabled: true });
+  assert.equal((await store.ready())?.source, "openrouter");
+  await store.save({ source: "codex" });
+  assert.equal((await store.ready())?.apiKey, null);
+  assert.equal((await store.get()).hasKey, false);
+  await store.save({ source: "openrouter", model: "openai/gpt-image-1" });
+  assert.equal((await store.ready())?.apiKey, "router-key");
+}));

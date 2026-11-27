@@ -294,6 +294,16 @@ test("app-server starts with Codex's own tools turned off in a form every versio
   assert.ok(overrides.every((value) => /^features\.[a-z0-9_]+=false$/.test(value) || value === 'web_search="disabled"'));
 });
 
+test("the isolated image process enables only native generation", () => {
+  const normal = codexAppServerArgs();
+  const image = codexAppServerArgs(true);
+  assert.deepEqual(
+    image.filter((entry) => entry !== "features.image_generation=true").sort(),
+    normal.filter((entry) => entry !== "features.image_generation=false").sort(),
+  );
+  assert.ok(image.includes("features.image_generation=true"));
+});
+
 test("app-server runs in Roqer's own Codex home without the bridge credential", () => {
   const environment = codexChildEnvironment(
     { PATH: "/bin", CODEX_HOME: "/home/user/.codex", ROBLOX_STUDIO_AUTH_TOKEN: "secret" },

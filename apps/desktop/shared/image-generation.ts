@@ -66,11 +66,12 @@ export function defaultSize(kind: ImageKind): ImageSize {
  * fronts many image models under one key; or any server that speaks OpenAI's
  * shape (a local one included).
  */
-export const IMAGE_SOURCE_KINDS = ["openai", "openrouter", "openai-compatible"] as const;
+export const IMAGE_SOURCE_KINDS = ["codex", "openai", "openrouter", "openai-compatible"] as const;
 export type ImageSourceKind = typeof IMAGE_SOURCE_KINDS[number];
 export const isImageSourceKind = (value: unknown): value is ImageSourceKind => IMAGE_SOURCE_KINDS.includes(value as ImageSourceKind);
 
 export const DEFAULT_IMAGE_BASE_URL = "https://api.openai.com/v1";
+export const CODEX_IMAGE_MODEL = "Automatic (Codex)";
 export const DEFAULT_IMAGE_MODEL = "gpt-image-1";
 export const DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 /** OpenAI's image model through OpenRouter: it takes a transparent background, which the light and matter kinds need. */
@@ -82,6 +83,7 @@ export function defaultImageBaseUrl(source: ImageSourceKind): string | undefined
 }
 
 export function defaultImageModel(source: ImageSourceKind): string | undefined {
+  if (source === "codex") return CODEX_IMAGE_MODEL;
   return source === "openai" ? DEFAULT_IMAGE_MODEL : source === "openrouter" ? DEFAULT_OPENROUTER_MODEL : undefined;
 }
 
@@ -91,6 +93,7 @@ export function imageSourceNeedsKey(source: ImageSourceKind): boolean {
 }
 
 export function imageSourceLabel(source: ImageSourceKind): string {
+  if (source === "codex") return "ChatGPT via Codex";
   return source === "openai" ? "OpenAI" : source === "openrouter" ? "OpenRouter" : "the image server";
 }
 export const MAX_IMAGE_MODEL_CHARS = 100;

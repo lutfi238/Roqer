@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import {
-  defaultImageBaseUrl, defaultImageModel, IMAGE_QUALITIES, imageSourceLabel, isImageSourceKind, type ImageQuality, type ImageSettingsResult,
+  CODEX_IMAGE_MODEL, defaultImageBaseUrl, defaultImageModel, IMAGE_QUALITIES, imageSourceLabel, isImageSourceKind, type ImageQuality, type ImageSettingsResult,
   type ImageSettingsView, type ImageSourceKind,
 } from "../shared/image-generation";
 import { getImageSettings, saveImageSettings, testImageSettings } from "./platform";
@@ -21,11 +21,13 @@ const draftFrom = (settings: ImageSettingsView): Draft => ({
 const QUALITY_LABELS: Record<ImageQuality, string> = { low: "Low (drafts)", medium: "Medium", high: "High (settled textures)" };
 
 function sourceSummary(settings: ImageSettingsView): string {
+  if (settings.source === "codex") return "Automatic image model · ChatGPT via Codex";
   const where = settings.source === "openai-compatible" ? settings.baseUrl : imageSourceLabel(settings.source);
   return `${settings.model} at ${where} · ${settings.hasKey ? "key saved" : "no key"} · quality ${settings.quality}`;
 }
 
 const KEY_HINTS: Record<ImageSourceKind, string> = {
+  codex: "",
   openai: "(from platform.openai.com → API keys)",
   openrouter: "(from openrouter.ai → Keys)",
   "openai-compatible": "(if the server needs one)",
@@ -34,7 +36,7 @@ const KEY_HINTS: Record<ImageSourceKind, string> = {
 /** Moving between sources: each takes its own address and model unless the user typed one for it. */
 function switchSource(draft: Draft, source: ImageSourceKind): Draft {
   const previousDefault = defaultImageModel(draft.source);
-  const model = draft.model.trim() === "" || draft.model === previousDefault ? defaultImageModel(source) ?? draft.model : draft.model;
+  const model = source === "codex" ? CODEX_IMAGE_MODEL : draft.model.trim() === "" || draft.model === previousDefault ? defaultImageModel(source) ?? draft.model : draft.model;
   return { ...draft, source, baseUrl: defaultImageBaseUrl(source) ?? draft.baseUrl, model };
 }
 
@@ -96,7 +98,7 @@ export function ImageSettings() {
       </SettingsRow>
       <SettingsRow title="Image model" detail={sourceSummary(settings)}>
         {draft === null && <>
-          {(settings.hasKey || settings.source === "openai-compatible") && <button className="small-button" disabled={busy} onClick={() => void test()}>{busy ? "Testing…" : "Test"}</button>}
+          {(settings.hasKey || settings.source === "openai-compatible" || settings.source === "codex") && <button className="small-button" disabled={busy} onClick={() => void test()}>{busy ? "Testing…" : "Test"}</button>}
           <button className="small-button" disabled={busy} onClick={() => { setDraft(draftFrom(settings)); setMessage(null); }}>Change</button>
         </>}
       </SettingsRow>
@@ -107,31 +109,34 @@ export function ImageSettings() {
           <select value={draft.source} onChange={(event) => {
             if (isImageSourceKind(event.target.value)) setDraft(switchSource(draft, event.target.value));
           }}>
+            <option value="codex">ChatGPT via Codex</option>
             <option value="openai">OpenAI</option>
             <option value="openrouter">OpenRouter</option>
             <option value="openai-compatible">OpenAI-compatible server</option>
           </select>
         </label>
         <label className="custom-field grow"><span>Model</span>
-          <input value={draft.model} spellCheck={false} placeholder={defaultImageModel(draft.source) ?? "flux"} onChange={(event) => setDraft({ ...draft, model: event.target.value })} />
+          <input value={draft.model} readOnly={draft.source === "codex"} spellCheck={false} placeholder={defaultImageModel(draft.source) ?? "flux"} onChange={(event) => setDraft({ ...draft, model: event.target.value })} />
         </label>
       </div>
       {compatible && <label className="custom-field"><span>Address (the /v1 base, with /images/generations under it)</span>
         <input value={draft.baseUrl} spellCheck={false} placeholder="http://localhost:8000/v1" onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })} />
       </label>}
       {draft.source === "openrouter" && <p className="custom-hint">Any model in OpenRouter's image list works. OpenAI's image models through OpenRouter take a transparent background, which particle and icon textures need; other models return opaque pictures. Test says what the chosen model takes.</p>}
-      <label className="custom-field"><span>API key {settings.hasKey && !draft.removeKey ? "(saved; paste a new one to replace it)" : KEY_HINTS[draft.source]}</span>
+      {draft.source !== "codex" && <label className="custom-field"><span>API key {settings.hasKey && !draft.removeKey ? "(saved; paste a new one to replace it)" : KEY_HINTS[draft.source]}</span>
         <div className="custom-key-row">
           <input type="password" value={draft.apiKey} spellCheck={false} autoComplete="off" disabled={draft.removeKey} placeholder={settings.hasKey && !draft.removeKey ? "••••••••" : "Paste the key"} onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })} />
           {settings.hasKey && <button className="small-button" onClick={() => setDraft({ ...draft, removeKey: !draft.removeKey, apiKey: "" })}>{draft.removeKey ? "Keep key" : "Remove key"}</button>}
         </div>
-      </label>
+      </label>}
       <label className="custom-field"><span>Default quality</span>
         <select value={draft.quality} onChange={(event) => setDraft({ ...draft, quality: IMAGE_QUALITIES.includes(event.target.value as ImageQuality) ? event.target.value as ImageQuality : draft.quality })}>
           {IMAGE_QUALITIES.map((quality) => <option key={quality} value={quality}>{QUALITY_LABELS[quality]}</option>)}
         </select>
       </label>
-      <p className="custom-hint">The agent can ask for a lower or higher quality on one call. The key is encrypted with your operating system's credential store and never reaches the window or the model.</p>
+      {draft.source === "codex"
+        ? <p className="custom-hint">Connect ChatGPT in Settings → Models to generate images with the model available in your Codex account. Requested quality and size are passed as guidance.</p>
+        : <p className="custom-hint">The agent can ask for a lower or higher quality on one call. The key is encrypted with your operating system's credential store and never reaches the window or the model.</p>}
       <div className="settings-actions">
         <button className="small-button" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</button>
         <button className="small-button" disabled={busy} onClick={() => { setDraft(null); setMessage(null); }}>Cancel</button>
