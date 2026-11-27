@@ -5,6 +5,7 @@ import readline from "node:readline";
 
 import type { Planner, PlannerContext } from "./run-engine";
 import type { RunUsage } from "../shared/run-events";
+import { isClassifiedTool } from "../shared/mcp-tools";
 import type { AgentDefinition } from "./agent-definition";
 import type { ProviderStatus } from "../shared/provider";
 import type { AntigravityLauncher } from "./antigravity-cli";
@@ -476,6 +477,8 @@ export function createAntigravityPlanner(options: AntigravityPlannerOptions): Pl
       /** What the response in progress has streamed, for the waiting line's count. */
       let responseCharacters = 0;
       let runUsage: AntigravityRunUsage | undefined;
+      let lastResult: string | undefined;
+      let lastFailedResult: string | undefined;
 
       const finish = (summary: string) => {
         if (settled) return;
@@ -578,7 +581,14 @@ export function createAntigravityPlanner(options: AntigravityPlannerOptions): Pl
         const response = typeof result.response === "string" ? result.response.trim() : "";
         if (result.status !== "SUCCESS") {
           const error = typeof result.error === "string" && result.error !== "" ? result.error : `Antigravity ended the turn (${String(result.status)}).`;
-          fail(new Error(error));
+          const diagnostic = /\bINVALID_ARGUMENT\b|\bcode 400\b/i.test(error)
+            ? [
+              `Model: ${options.model}.`,
+              lastResult === undefined ? "No Roqer tool returned in this run." : `Last Roqer tool result: ${lastResult}.`,
+              lastFailedResult === undefined || lastFailedResult === lastResult ? "" : `Earlier failed result: ${lastFailedResult}.`,
+            ].filter(Boolean).join(" ")
+            : "";
+          fail(new Error(diagnostic === "" ? error : `${error} ${diagnostic}`));
           return;
         }
         const denied = Array.isArray(result.denied_actions)
@@ -629,7 +639,16 @@ export function createAntigravityPlanner(options: AntigravityPlannerOptions): Pl
             // question can wait on the user indefinitely without anything being stuck.
             const release = watchdog.hold();
             try {
-              return await invokeTool(name, args);
+              const result = await invokeTool(name, args);
+              const operation = name === "roblox_studio" && typeof args.operation === "string" && isClassifiedTool(args.operation)
+                ? args.operation
+                : name;
+              // Record only the response shape. Arguments, script text, image
+              // bytes and authentication data stay out of the diagnostic.
+              const images = result.images?.length ?? 0;
+              lastResult = `${operation} (${result.ok ? "ok" : "error"}, ${images} ${images === 1 ? "image" : "images"})`;
+              if (!result.ok) lastFailedResult = lastResult;
+              return result;
             } finally {
               release();
             }

@@ -474,3 +474,27 @@ test("an Antigravity session opens with the project's instructions, and editing 
   assert.doesNotMatch(firstText(inputs[2]), /Use Knit/);
   sessions.closeAll();
 });
+
+test("Antigravity invalid-argument errors keep the model and recent MCP response shapes", async () => {
+  const { context } = makeContext(new AbortController(), {
+    call: async (operation) => ({
+      ok: operation !== "capture_moments", data: undefined, text: "private tool details",
+      httpStatus: 200, durationMs: 1,
+    }),
+  });
+  const fake = fakeLauncher(async (child, home) => {
+    child.writeLine(INIT);
+    await callTool(home, "roblox_studio", { operation: "capture_moments", arguments: { code: "start()", times: [0.1] } });
+    await callTool(home, "roblox_studio", { operation: "get_place_info", arguments: {} });
+    child.writeLine(result("", { status: "ERROR", error: "INVALID_ARGUMENT (code 400): Request contains an invalid argument." }));
+    child.finish(3);
+  });
+  const planner = createAntigravityPlanner({ ...BASE_OPTIONS, launcher: fake.launcher });
+  await assert.rejects(() => planner.run(context), (error: Error) => {
+    assert.match(error.message, /INVALID_ARGUMENT.*Model: gemini-3.8-flash-high/);
+    assert.match(error.message, /Last Roqer tool result: get_place_info \(ok, 0 images\)/);
+    assert.match(error.message, /Earlier failed result: capture_moments \(error, 0 images\)/);
+    assert.doesNotMatch(error.message, /private tool details|start\(\)/);
+    return true;
+  });
+});

@@ -157,6 +157,7 @@ test("code that fails to start captures nothing and still ends the effect", asyn
   const outcome = await captureMoments({ code: "_G.vfx = nope()", times: [0.1] }, {}, studio);
   assert.equal(outcome.ok, false);
   assert.match(outcome.text, /failed, so nothing was captured: attempt to index nil/);
+  assert.equal(outcome.message, outcome.text);
   assert.equal(calls.some((call) => call.tool === "capture_screenshot"), false);
   assert.match(String(calls.at(-1)?.args.code), /pcall\(h\.stop, h\)/);
 });
@@ -166,6 +167,7 @@ test("a missing handle is named, and nothing is captured", async () => {
   const outcome = await captureMoments({ code: "start()", times: [0.1, 0.2] }, {}, studio);
   assert.equal(outcome.ok, false);
   assert.match(outcome.text, /_G\.vfx is not a handle with setTimeScale/);
+  assert.match(outcome.message ?? "", /^Captured 0 of 2 moments\. _G\.vfx is not a handle/);
 });
 
 test("a cancelled run stops capturing but still ends the effect", async () => {

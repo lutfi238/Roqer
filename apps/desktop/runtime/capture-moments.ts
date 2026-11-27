@@ -406,8 +406,8 @@ export function liveLuau(code: string, handle: string, times: readonly number[])
   ].join("\n");
 }
 
-function failure(text: string, started: number, images: readonly McpToolImage[] = []): McpToolOutcome {
-  return { ok: false, data: undefined, text, httpStatus: 200, durationMs: Date.now() - started, ...(images.length > 0 ? { images } : {}) };
+function failure(text: string, started: number, message = text): McpToolOutcome {
+  return { ok: false, data: undefined, text, message, httpStatus: 200, durationMs: Date.now() - started };
 }
 
 function returned(outcome: McpToolOutcome): string {
@@ -580,6 +580,7 @@ type Captured = Readonly<{
   notes: readonly string[];
   /** Lines after the moments. */
   footer: readonly string[];
+  problem?: string;
   ok: boolean;
   data?: Readonly<Record<string, unknown>>;
 }>;
@@ -643,9 +644,14 @@ async function deliver(captured: Captured): Promise<McpToolOutcome> {
     ...(gap === undefined ? [] : [describeToneGap(gap)]),
     ...captured.footer,
   ].join("\n");
-  if (images.length === 0) return failure(text, started);
+  // The first line describes layout, even when there are no frames. Preserve
+  // the failed moment or the call's stopping reason in the run record instead.
+  const reason = captured.problem ?? moments.find((moment) => moment.image === undefined && moment.note !== undefined)?.note;
+  const message = [`Captured ${images.length} of ${parsed.times.length} moments.`, reason].filter(Boolean).join(" ");
+  if (images.length === 0) return failure(text, started, message);
   return {
     ok: captured.ok,
+    ...(captured.ok ? {} : { message }),
     data: {
       moments,
       ...captured.data,
@@ -782,15 +788,18 @@ export async function captureMoments(
   const ranOn = runOn
     ? `_G.${parsed.handle}'s clock kept running while it was held: its setTimeScale(0) does not stop its time field. The effect played on through each capture (about ${perShot.toFixed(1)} s each), so every frame shows it later than asked, and each moment after the first is reached about that much late, as the times below say. To see the times asked for, pass live: true, store a handle whose setTimeScale(0) stops both its time and what it draws, as the emit module's does, or capture one moment per call.`
     : undefined;
+  const outOfTime = skipped.length === 0 ? undefined
+    : `Not captured, because this call's time ran out first: ${skipped.map((time) => `${time} s`).join(", ")}. Capture them in another call.`;
   return deliver({
     parsed, manifest, references, contactSheet, readFrame, moments, images, started,
+    problem: stopped ?? outOfTime,
     how: `, ${how}`,
     notes: [
       ...(ranOn === undefined ? [] : [ranOn]),
       ...(stillLoading ? [`Its textures were still loading after ${PRELOAD_SECONDS} s, so early frames may be missing layers; if they are, capture again.`] : []),
     ],
     footer: [
-      ...(skipped.length === 0 ? [] : [`Not captured, because this call's time ran out first: ${skipped.map((time) => `${time} s`).join(", ")}. Capture them in another call.`]),
+      ...(outOfTime === undefined ? [] : [outOfTime]),
       ...(stopped === undefined ? [] : [stopped]),
       "Roqer stopped the effect afterwards.",
     ],
