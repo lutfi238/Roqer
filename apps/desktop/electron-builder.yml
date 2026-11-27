@@ -67,7 +67,7 @@ extraResources:
 # repository is public. Override with `-c.publish.*` to package against a fork.
 publish:
   provider: github
-  owner: S4US
+  owner: lutfi238
   repo: Roqer
 
 win:

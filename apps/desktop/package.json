@@ -2,7 +2,7 @@
   "name": "@roqer/desktop",
   "productName": "Roqer",
   "desktopName": "roqer.desktop",
-  "version": "0.3.0",
+  "version": "0.3.1-lutfi.1",
   "private": true,
   "engines": {
     "node": ">=22"
