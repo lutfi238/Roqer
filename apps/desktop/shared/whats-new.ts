@@ -6,6 +6,19 @@ export type ReleaseNotes = Readonly<{
 /** Add a matching entry here when shipping a desktop version with release notes. */
 const RELEASE_NOTES: readonly ReleaseNotes[] = [
   {
+    version: "0.3.3-lutfi.1",
+    changes: [
+      {
+        title: "See why a playtest capture failed",
+        detail: "Failed capture_moments calls keep the available reason in the run record.",
+      },
+      {
+        title: "More context for Antigravity errors",
+        detail: "When Antigravity returns INVALID_ARGUMENT, the run record lists the model and recent tool outcomes to help diagnose the failure.",
+      },
+    ],
+  },
+  {
     version: "0.3.2-lutfi.1",
     changes: [
       {
